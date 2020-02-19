@@ -42,6 +42,12 @@ options:
     Specifies the directory where the resulting file structure will be saved to.
     The default is "." (the current directory).
 
+"-t" <token>
+"--token" <token>
+    Specify an authorization token for an authenticated log-in session.
+    To obtain such a token for a paid or trial account:
+      atklogin --email <account_email_address> --password <account_password>
+
 "-u" <URL>
 "--url" <URL>
     Specify an episode URL.

@@ -1,11 +1,12 @@
 {
   "name": "@warren-bank/node-hls-downloader-americastestkitchen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "lib/process_cli.js",
   "description": "Command-line utility for downloading an offline copy of 'Americas Test Kitchen' HLS video streams.",
   "license": "GPL-2.0",
   "bin": {
-    "atkdl": "bin/americastestkitchen-downloader.js"
+    "atkdl": "bin/americastestkitchen-downloader.js",
+    "atklogin": "bin/americastestkitchen-login.js"
   },
   "dependencies": {
     "@warren-bank/node-hls-downloader": "^4.0.4",

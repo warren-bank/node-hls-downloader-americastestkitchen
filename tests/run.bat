@@ -81,5 +81,30 @@ call "convert_mp4s.bat"
 
 rem :: -------------------------------------------------------------------------
 
+rem :: =================================
+rem :: log in to paid/trial account
+rem ::
+rem :: print a trace of the operations that would occur
+rem :: IF all episodes in one RESTRICTED season were to be downloaded
+rem ::
+rem :: Season 1
+rem :: =================================
+
+set token=
+for /f "tokens=* delims=" %%t in (' atklogin -e "foo@bar.com" -p "foobar" ') do set token=%%t
+
+if not defined token (
+  echo login attempt was unsuccessful
+) else (
+  echo login was successful
+  echo token: '%token%'
+
+  call atkdl -dr -ll 1 -s 1 -t "%token%"
+  call atkdl -dr -ll 2 -s 1 -t "%token%"
+  call atkdl -dr -ll 3 -s 1 -t "%token%"
+)
+
+rem :: -------------------------------------------------------------------------
+
 echo.
 pause

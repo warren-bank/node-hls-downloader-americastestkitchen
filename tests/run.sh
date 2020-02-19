@@ -80,3 +80,27 @@ atkdl -nm -mc 5 -i 'episode_urls.txt' >'log.txt' 2>&1
 ./convert_mp4s.sh
 
 # ------------------------------------------------------------------------------
+
+# =================================
+# log in to paid/trial account
+#
+# print a trace of the operations that would occur
+# IF all episodes in one RESTRICTED season were to be downloaded
+#
+# Season 1
+# =================================
+
+token=$( atklogin -e 'foo@bar.com' -p 'foobar' )
+
+if [ -z "$token" ]; then
+  echo 'login attempt was unsuccessful'
+else
+  echo 'login was successful'
+  echo "token: '${token}'"
+
+  atkdl -dr -ll 1 -s 1 -t "$token"
+  atkdl -dr -ll 2 -s 1 -t "$token"
+  atkdl -dr -ll 3 -s 1 -t "$token"
+fi
+
+# ------------------------------------------------------------------------------

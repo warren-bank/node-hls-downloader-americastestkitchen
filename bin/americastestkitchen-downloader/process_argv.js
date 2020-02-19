@@ -15,6 +15,7 @@ const argv_flags = {
   "--log-level":              {num:   "int"},
   "--max-concurrency":        {num:   "int"},
   "--directory-prefix":       {},
+  "--token":                  {},
   "--url":                    {},
   "--input-file":             {file: "lines"}
 }
@@ -31,6 +32,7 @@ const argv_flag_aliases = {
   "--log-level":              ["-ll"],
   "--max-concurrency":        ["-mc", "--threads"],
   "--directory-prefix":       ["-P"],
+  "--token":                  ["-t"],
   "--url":                    ["-u"],
   "--input-file":             ["-i"]
 }
