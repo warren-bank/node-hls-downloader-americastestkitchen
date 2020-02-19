@@ -1,0 +1,2452 @@
+example (cont.):
+================
+
+// -----------------------------------------------------------------------------
+
+"full_video" URL:
+  https://player.zype.com/embed/5bf4971587988b1465004555.js?api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ
+
+"full_video" player:
+====================
+
+(function(){
+/* IE compatibility */
+if(!window.console){
+  console = {log: function(){}};
+}
+if(!window.location.origin){
+  window.location.origin = window.location.protocol + "//" + window.location.hostname + (window.location.port ? ':' + window.location.port : '');
+}
+
+/* Write container */
+if(!document.getElementById('zype_5bf4971587988b1465004555')) {
+  if(document.getElementById('broadcast-preview')) {
+    document.getElementById('broadcast-preview').innerHTML = "<div id='zype_5bf4971587988b1465004555'></div>";
+  } else if (document.getElementById('zype_player')) { 
+    document.getElementById('zype_player').innerHTML = "<div id='zype_5bf4971587988b1465004555'></div>";
+  } else {
+    console.log('Could not find zype container');
+  }
+}
+
+/* Helpers */
+function loadScript(url, callback){
+  var head = document.getElementsByTagName('head')[0];
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src = url;
+  script.onload = callback;
+  script.onerror = function() {
+    // run the callback anyway
+    callback()
+  }
+  head.appendChild(script);
+}
+
+function scriptLoader(scripts, callback){
+  var i = 0, loaded = 0;
+  for (; i < scripts.length; i++) {
+    if (!isScriptLoaded(scripts[i])) {
+      loadScript(scripts[i], function(){
+        if (++loaded == scripts.length) {
+          callback();
+        }
+      })
+    } else {
+      if (++loaded == scripts.length) {
+        callback()
+      }
+    }
+
+  }
+}
+
+function isScriptLoaded(scriptSrc) {
+  return document.querySelectorAll('script[src="' + scriptSrc + '"]').length > 0
+}
+
+function loadStylesheet(resource){
+  if (!isStylesheetLoaded(resource)) {
+    var head = document.getElementsByTagName('head')[0];
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = resource;
+    head.appendChild(link);
+  }
+}
+
+function isStylesheetLoaded(resource) {
+  return document.querySelectorAll('link[href="' + resource + '"]').length > 0
+}
+
+/* Reset player container */
+var container = document.getElementById('zype_5bf4971587988b1465004555');
+if(typeof container.resetPlayer == 'function'){ container.resetPlayer(); };
+container.innerHTML = '';
+container.resetPlayer = function(){};
+
+function EventManager(target,data) {
+  var events = {}
+  var messagesSupported = (typeof window.postMessage != 'undefined');
+
+  this.dispatch = function(event_type){
+    // post message to parent window
+    if(messagesSupported){ this.dispatchMessage(event_type) }
+  }
+
+  this.dispatchMessage = function(event_type){
+    var message = JSON.parse(JSON.stringify(data));
+    message.event = event_type;
+    target.postMessage(JSON.stringify(message), '*');
+  }
+}
+
+var em = new EventManager(window, {"id":"5bf4971587988b1465004555","info":{}});
+
+function ErrorTracker(requestParams) {
+  var loaded = false;
+  this.dispatch = function(error){
+    if(!loaded){
+      loadScript('https://resources.zype.com/shared/ua-parser.min.js', function(){
+        loaded = true;
+        parseError(error);
+      })
+    } else {
+      parseError(error);
+    }
+  }
+  function parseError(error){
+    var uaResult = new UAParser().getResult();
+    var params = {
+      os: uaResult.os.name,
+      os_version: uaResult.os.version,
+      browser: uaResult.browser.name,
+      browser_version: uaResult.browser.version,
+      viewport: (window.outerWidth + "x" + window.outerHeight),
+      cookies_enabled: navigator.cookieEnabled,
+      error_code: error.errorCode,
+      error_message: error.errorMessage,
+      playback_status: error.playerStatus,
+      current_time: error.currentTime
+    }
+    for (var attr in requestParams){ 
+      params[attr] = requestParams[attr]; 
+    }
+    submitError(params)
+  }
+  function submitError(params){
+    var parts = [];
+    for (var i in params) {
+      if (params[i] != null) {
+        parts.push(encodeURIComponent(i) + "=" + encodeURIComponent(params[i]));
+      }
+    }
+    var data = parts.join('&');
+    var http = new XMLHttpRequest();
+    http.open("POST", 'https://playererror.zype.com/catch', true);
+    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    http.send(data);
+  }
+}
+function ageGater(container_id, successCallback){
+  var MESSAGE_CLASS = "agegate-message";
+  var TITLE_CLASS = "agegate-title";
+  var COOKIE_NAME = "zype-age-gate";
+  var OLD_ENOUGH = "success";
+  var TOO_YOUNG = "failure";
+
+  var container = document.getElementById(container_id);
+  var form_container = function(){ return container.getElementsByClassName('agegate-form')[0]; };
+  var submit_button =  function(){ return container.getElementsByClassName('agegate-submit')[0]; };
+  
+  var month_dropdown = function(){ return container.querySelectorAll('[name=month]')[0]; };
+  var day_dropdown =   function(){ return container.querySelectorAll('[name=day]')[0]; };
+  var year_dropdown =  function(){ return container.querySelectorAll('[name=year]')[0]; };
+  
+  var title_elem =     function(){ return container.getElementsByClassName(TITLE_CLASS)[0]; };
+  var message_elem =   function(){ return container.getElementsByClassName(MESSAGE_CLASS)[0]; };
+  
+  var month_html = '<select name="month"><option disabled selected>Month</option>'+genMonths()+'</select>';
+  var day_html = '<select name="day"><option disabled selected>Day</option>'+genDays()+'</select>';
+  var year_html = '<select name="year"><option disabled selected>Year</option>'+genYears()+'</select>';
+  var cookie_days = 30;
+  var minimum_age = 18;
+
+  var month, day, year;
+
+  //initialize
+  initializeHTML();
+  
+  //messages
+  var messages = {
+    form:{
+      title: 'The content in this video requires age verification.',
+      message: 'Please enter your date of birth below.'
+    },
+    young:{
+      title: 'Access Denied.',
+      message: 'You are not old enough to view this content.'
+    },
+    invalid:{
+      message: 'Please enter a valid date.'
+    }
+  }
+
+  //helpers
+  function setCookie(cname, cvalue, exdays) {
+    var d = new Date();
+    d.setTime(d.getTime() + (exdays*24*60*60*1000));
+    var expires = "expires="+d.toUTCString();
+    document.cookie = cname + "=" + cvalue + "; " + expires;
+  }
+
+  function getCookie(cname) {
+    var name = cname + "=";
+    var ca = document.cookie.split(';');
+    for(var i = 0; i < ca.length; i++) {
+      var c = ca[i];
+      while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return false;
+  }
+
+  function genMonths(){
+    var months_html = '';
+    var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    for(var i = 0; i < months.length; i++){
+      month_html += ('<option value="'+(i+1)+'">'+months[i]+'</option>');
+    }
+    return month_html;
+  }
+
+  function genDays(){
+    var days_html = '';
+    for(var i = 1; i < 32; i++){
+      days_html += ('<option value="'+i+'">'+i+'</option>');
+    }
+    return days_html;
+  }
+
+  function genYears(){
+    var years_html = '';
+    for(var i = (new Date().getFullYear()); i > 1899; i--){
+      year_html += ('<option value="'+i+'">'+i+'</option>');
+    }
+    return year_html;
+  }
+
+  function hasCookie(){
+    if(getCookie(COOKIE_NAME)){
+      return true;
+    }
+    return false;
+  }
+
+  function setOld(){
+    setCookie(COOKIE_NAME, OLD_ENOUGH, cookie_days);
+  }
+
+  function setYoung(){
+    setCookie(COOKIE_NAME, TOO_YOUNG, cookie_days);
+  }
+
+  function tooYoung(){
+    return getCookie(COOKIE_NAME) == TOO_YOUNG;
+  }
+
+  function show(){
+    container.style.display = "block";
+  }
+
+  function hide(){
+    container.style.display = "none";
+  }
+
+  function setTitle(set_to){
+    title_elem().innerHTML = set_to;
+  }
+
+  function setMessage(set_to, error){
+    var opener = "<p>";
+    if(error){
+      opener = "<p class=\"error\">";
+    }
+    message_elem().innerHTML = opener + set_to + '</p>';
+  }
+
+  function hideForm(){
+    form_container().style.display = 'none';
+  }
+
+  function showForm(){
+    form_container().style.display = 'block';
+  }
+
+  function calculateAge(bd){
+    var age_delta = Date.now() - bd.getTime();
+    var delta_date = new Date(age_delta);
+    return Math.abs(delta_date.getUTCFullYear() - 1970);
+  }
+
+  function checkDate(){
+    try {
+      if(!month || !day || !year){
+        return 'invalid';
+      }
+      
+      var birthday = new Date(year, month, day);
+      var age = calculateAge(birthday);
+      
+      return (age >= minimum_age) ? 'old_enough' : 'too_young';
+    } catch(err) {
+      return 'invalid';
+    }          
+  }
+
+  //renderers
+  function initializeHTML(){
+    container.innerHTML = '' +
+      '<div class="wrapper">' +
+        '<div class="inner">' +
+          '<h1 class="agegate-title"></h1>' +
+          '<p class="agegate-message"></p>' +
+          '<div class="agegate-form">' +
+            '<div class="agegate-submit">Verify</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '';
+  }
+
+  function presentForm(){
+    setTitle(messages.form.title);
+    setMessage(messages.form.message);
+    
+    form_container().innerHTML = month_html + day_html + year_html + form_container().innerHTML;
+    month_dropdown().addEventListener('change', monthHandler, false);
+    day_dropdown().addEventListener('change', dayHandler, false);
+    year_dropdown().addEventListener('change', yearHandler, false);
+    submit_button().addEventListener('click', submitHandler, false);
+    
+    showForm();
+    show();
+  }
+
+  function denyAccess(){
+    hideForm();
+    setTitle(messages.young.title);
+    setMessage(messages.young.message, true);
+    show();
+  }
+
+  function allowAccess(){
+    // for flash player swf layering
+    if(successCallback) {
+      successCallback();
+    }
+    hide();
+  }
+
+  //handlers
+  function submitHandler(){
+    switch (checkDate()){
+      case 'old_enough':
+        setOld();
+        allowAccess();
+        break;
+      case 'too_young':
+        setYoung();
+        denyAccess();
+        break;
+      case 'invalid':
+        setMessage(messages.invalid.message, true);
+        break;
+    }
+  }
+
+  function monthHandler(){
+    month = month_dropdown().value;
+  }
+
+  function dayHandler(){
+    day = day_dropdown().value;
+  }
+
+  function yearHandler(){
+    year = year_dropdown().value
+  }
+
+  return {
+    setCookieDays: function(days){
+      cookie_days = days;
+    },
+    setMinimumAge: function(age){
+      minimum_age = age;
+    },
+    setMessages: function(msgs){
+      messages = msgs;
+    },
+    doItUp: function(){
+      if(!hasCookie()){
+        return presentForm();
+      }
+
+      if(tooYoung()){
+        return denyAccess();
+      }
+
+      return allowAccess();
+    }
+  }
+}
+
+function AdTagUrlDimensionsParser() {
+  this.parse = function(width, height, url){
+    var playerDimensionsParams = ["player_width=", width, '&player_height=', height].join('');
+    
+    if (url.indexOf("?") !== -1) {
+      return url + '&' + playerDimensionsParams;
+    }
+
+    return url + '?' + playerDimensionsParams;
+  }
+}
+
+var adTagUrlDimensionsParser = new AdTagUrlDimensionsParser();
+function UrlDimensionsParser() {
+  this.parse = function(width, height, url){
+    return url.replace('[player_width]', width)
+              .replace('[player_height]', height)
+              .replace('[player_dimensions]', width + 'x' + height);
+  }
+}
+
+var UrlDimensionsParser = new UrlDimensionsParser();
+function continueWatching(nextVideo, embed_key, data_source) {
+  var videoTitle = nextVideo.video.title;
+  var videoId = nextVideo.video._id;
+  var url = nextVideo.url;
+  var monetized = nextVideo.monetized;
+  var embedKey = embed_key;
+  var currentVideoId = data_source;
+
+  var didProceedToNextVideo = false;
+
+  function continueWatchingHandler(playerDuration, currentTime, playbackEnded) {
+    // once player is loaded, playerDuration will be a number not 'NaN'
+    if (!Number.isNaN(playerDuration)) {
+
+      // there are about 10 seconds remaining in the video
+      var timeRemaining = Math.floor(playerDuration - currentTime)
+      if (timeRemaining <= 10) {
+        initContinueWatching(timeRemaining)
+      }
+
+      if (timeRemaining > 10) {
+        destroyContinueWatching()
+      }
+
+      // proceed to next video once playback has ended
+      // didProceedToNextVideo to track if it has proceeded because player fires ended multiple times on timeupdate
+      if (playbackEnded && !didProceedToNextVideo) {
+        didProceedToNextVideo = true
+        proceedToNextVideo()
+      }
+    }
+  }
+
+  function initContinueWatching(timeRemaining) {
+    var elementNames = {
+      bannerClassName: 'zype-continue-watching',
+      countdownClassName: 'continue-watching--countdown',
+      titleClassName: 'continue-watching--title',
+      buttonClassName: 'continue-watching--btn'
+    }
+
+    // create the banner elements if they don't exist
+    if (theoplayer.element.querySelector('.' + elementNames.bannerClassName) === null) {
+      createContinueWatchingElements(elementNames)
+    }
+
+    // update values as time changes
+    theoplayer.element.querySelector('.' + elementNames.countdownClassName).innerHTML = 'Up next in ' + timeRemaining + ':'
+  }
+
+  function createContinueWatchingElements(elementNames) {
+    var bannerElement = document.createElement('div')
+    bannerElement.setAttribute('class', elementNames.bannerClassName);
+
+    var countdownElement = document.createElement('div')
+    countdownElement.setAttribute('class', elementNames.countdownClassName)
+
+    var titleElement = document.createElement('div')
+    titleElement.setAttribute('class', elementNames.titleClassName)
+    titleElement.innerHTML = videoTitle;
+
+    var continueBtn = document.createElement('button')
+    continueBtn.setAttribute('class', elementNames.buttonClassName)
+    continueBtn.innerText = 'Play Now'
+    continueBtn.addEventListener('click', function(e) {
+      proceedToNextVideo();
+    })
+
+    bannerElement.appendChild(countdownElement)
+    bannerElement.appendChild(titleElement)
+    bannerElement.appendChild(continueBtn)
+
+    theoplayer.element.insertBefore(bannerElement, theoplayer.element.firstChild)
+  }
+
+  function destroyContinueWatching() {
+    if (theoplayer.element.querySelectorAll('.zype-continue-watching').length > 0) {
+      var banner = theoplayer.element.querySelector('.zype-continue-watching')
+      banner.parentNode.removeChild(banner)
+    }
+  }
+
+  function proceedToNextVideo() {
+
+    var nextVideoContainer = document.querySelector('#zype_' + videoId);
+
+    // create the script element
+    var embedScript = document.createElement('script')
+    embedScript.type = 'text/javascript'
+    var embedConfigScript; // for monetized only
+
+    if (!monetized) {
+      embedScript.src = url
+      
+      // on new video script load, remove the old script from the page
+      embedScript.onload = function() {
+        var embedScripts = document.querySelectorAll('script')
+        embedScripts.forEach(function(script) {
+          if (script.src.indexOf('embed/' + videoId) !== -1) {
+            script.parentNode.removeChild(script)
+          }
+        })
+      }
+
+    } else if (monetized) {
+      embedScript.src = url + "/javascripts/subscription_embed.js"
+
+      embedConfigScript = document.createElement('script')
+      embedConfigScript.type = 'text/javascript'
+      embedConfigScript.textContent = 'zype.siteId = "' + embedKey + '";'
+      embedConfigScript.textContent += 'zype.host = "' + url + '";'
+      embedConfigScript.textContent += 'zype.videoId = "' + videoId + '";'
+      embedConfigScript.textContent += 'zype.videoEmbed("zype_' + videoId + '");'
+
+      // when subscription_embed.js is loaded, insert config
+      embedScript.onload = function() {
+        embedScript.parentNode.insertBefore(embedConfigScript, embedScript.nextSibling);
+      }
+    }
+
+    // insert the script element to load the new video
+    nextVideoContainer.parentNode.insertBefore(embedScript, nextVideoContainer.nextSibling)
+    // remove the old video from the page
+    container.parentNode.removeChild(container)
+  }
+
+  function insertNextVideoContainer() {
+    var nextVideoContainer = document.createElement('div')
+    nextVideoContainer.setAttribute('id', 'zype_' + videoId)
+    nextVideoContainer.setAttribute('class', 'zype-next-video')
+    container.parentNode.insertBefore(nextVideoContainer, container.nextSibling)
+  }
+
+  return {
+    continueWatchingHandler: continueWatchingHandler,
+    insertNextVideoContainer: insertNextVideoContainer
+  }
+}
+
+var player = null;
+var continue_watching = null;
+
+// hotkeys
+function THEOplayer_UI_Hotkeys (player) {
+  window.per = player
+  var togglePlay = function() {
+    if (player.paused) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  };
+
+  var toggleMute = function() {
+    player.muted = !player.muted
+  };
+
+  var toggleFullScreen = function() {
+    if (player.presentationMode = 'fullscreen') {
+      player.presentationMode = 'inline';
+    } else {
+      player.presentationMode = 'fullscreen';
+    }
+  };
+
+  var rewind = function() {
+    player.currentTime -= 5;
+  };
+
+  var forward = function() {
+    player.currentTime += 5;
+  };
+
+  var increaseVolume = function() {
+    player.volume = Math.min(player.volume + 0.05, 1);
+  };
+
+  var decreaseVolume = function() {
+    player.volume = Math.max(player.volume - 0.05, 0);
+  };
+
+  var preventStandardHotKeyActions = function(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    return false;
+  };
+
+  var charCodeMap = {
+    32: togglePlay, // spacebar
+    37: rewind, // left
+    38: increaseVolume, // up
+    39: forward, // right
+    40: decreaseVolume, // down
+    70: toggleFullScreen, // f
+    77: toggleMute // m
+  };
+
+  var isTheoPlayerFocused = function() {
+    var node = document.activeElement;
+
+
+    while(node !== null) {
+      if(player.element === node) {
+        return true;
+      }
+      node = node.parentNode;
+    }
+    return false;
+  };
+
+  var processKeyEvent = function(event) {
+    var action;
+    if(!event) {
+      event = window.event;
+    }
+    action = charCodeMap[event.keyCode];
+    if(action && !event.altKey && !event.ctrlKey && !event.shiftKey && isTheoPlayerFocused()) {
+      action();
+      return preventStandardHotKeyActions(event);
+    }
+  };
+
+  var load = function() {
+    player.element.tabIndex = 1;
+    document.addEventListener('keydown', processKeyEvent);
+  };
+
+  load();
+}
+
+function setupAgeGate(){
+  var agegate_container = document.createElement("div");
+  agegate_container.setAttribute("class", "zype-player-agegate-overlay");
+  agegate_container.setAttribute("id", "zype-player-agegate-overlay_5bf4971587988b1465004555");
+  container.appendChild(agegate_container);
+
+  var zype_age_gate = new ageGater('zype-player-agegate-overlay_5bf4971587988b1465004555');
+  zype_age_gate.setMinimumAge(18);
+  zype_age_gate.setCookieDays(60);
+  zype_age_gate.doItUp();
+}
+
+function setupContinueWatching() {
+  var next_video = false;
+  var embedKey = "Tohbkv2AdM7p8dlACwlJDubxzbvIsDB75RlvMAl654F5ZF1Bdw0eEj9Jvn5C-45i";
+  var dataSource = "5bf4971587988b1465004555"
+  if (next_video != false) {
+    continue_watching = new continueWatching(next_video, embedKey, dataSource);
+  }
+}
+
+function doPlayer(){
+  doStyles();
+
+  // ad container isn't rendered yet, so calculate player height for ad request
+  var aspectRatio = 16/9;
+  var playerWidth = container.offsetWidth;
+  var playerHeight = Math.floor(playerWidth / aspectRatio);
+
+  var videoSources = {
+    sources: [
+        {
+          src : UrlDimensionsParser.parse(container.offsetWidth, container.offsetHeight, 'https://player.zype.com/manifest/5bf4971587988b1465004555.m3u8?ad_enabled=true&api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&https=true&player_request_id=5e4b4bd273c28b0001905a1e&preview=false'),
+          type : 'application/x-mpegURL',
+          crossOrigin: '',
+        },
+    ],
+        ads: setupAds(playerWidth, playerHeight),
+        blockContentIfAdError: false,
+  };
+
+  var socialUrl = (window.location != window.parent.location) ? document.referrer : document.location.href;
+  var socialItems = [
+  ];
+
+  var playerConfiguration = {
+    allowNativeFullscreen: true,
+    fluid: true,
+    libraryLocation : 'https://resources.zype.com/player/2.66.2/',
+    ui: {
+      width: '100%',
+      height: '100%'
+    },
+    isEmbeddable: true,
+    ads: {
+      showCountdown: true,
+      vpaidMode: 'insecure'
+    },
+    mutedAutoplay: 'all',
+  };
+
+  window.theoconfig = playerConfiguration
+
+  var theoplayer = new THEOplayer.Player(container, playerConfiguration);
+  window.theoplayer = theoplayer || {};
+  theoplayer.abr.strategy = 'quality'
+  theoplayer.source = videoSources;
+    theoplayer.poster = 'https://thumbnail.zype.com/5b0820fbdc4390132f0001ca/5bf4971587988b1465004555/5bf4971587988b1465004556/545bdab169702d05bc010000/00001.png';
+  theoplayer.preload = 'auto';
+  theoplayer.autoplay = false;
+  theoplayer.social.url = socialUrl;
+  theoplayer.social.items = socialItems;
+  theoplayer.controls = true;
+
+
+
+  theoplayer.addEventListener('error', function(event) {
+    et.dispatch(new TheoError(theoplayer, event))
+  })
+
+  THEOplayer_UI_Hotkeys(theoplayer);
+
+  setupLooping(theoplayer);
+  setupEvents(theoplayer);
+
+    setupMediaAnalytics(theoplayer);
+
+  setupGoogleAnalytics(theoplayer);
+  setupContextMenu(theoplayer);
+
+    theoplayer.addEventListener('unsupportedPlatform', function(event){
+      et.dispatch(new TheoError(theoplayer, event))
+      fallbackPlayer();
+    });
+
+
+  if(container.className.indexOf('zype-theo-player') < 0){
+    container.className = container.className + ' zype-theo-player';
+  }
+
+  container.className = container.className + ' theoplayer-container video-js theoplayer-skin theo-seekbar-above-controls';
+  document.querySelectorAll('.theo-social-label').forEach( function(label){
+    label.style.display = 'inline-block';
+  });
+
+  if(self !== top) {
+    container.style.position = 'absolute';
+    container.style.width = '100%';
+    container.style.height = '100%';
+  }
+
+  window.zypePlayerVersion = 2;
+
+} // end doPlayer()
+
+var et = new ErrorTracker({
+  player: 'theo',
+  version: '2.66.2',
+  site_id: '5b0820fbdc4390132f0001ca',
+  site_title: 'America\&#39;s Test Kitchen',
+  video_id: '5bf4971587988b1465004555',
+  video_title: 'CIO 156 JF19 Coffee Grinders',
+  player_request_id: '5e4b4bd273c28b0001905a1e',
+})
+
+function playerStatus(player) {
+  if(player.paused)  { return 'paused'; }
+  if(!player.paused) { return 'playing' }
+  if(player.seeking) { return 'seeking'; }
+  if(player.readyState < 3) { return 'waiting' }
+  return null;
+}
+
+function TheoError(player, error) {
+  this.errorCode = error.error.info.code;
+  this.errorMessage = error.error.code;
+  this.currentTime = isNaN(player.currentTime) ? 0 : player.currentTime;
+  this.playerStatus = playerStatus(player);
+}
+
+function ReadyStateLog(player, data) {
+  this.errorCode = 'ReadyState: ' + player.readyState;
+  this.errorMessage = data.type;
+  this.currentTime = isNaN(player.currentTime) ? 0 : player.currentTime
+  this.playerStatus = playerStatus(player);
+}
+
+function fallbackPlayer(){
+  loadScript('https://player.zype.com/embed/5bf4971587988b1465004555.js?api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&controls=true&fallback=true&origin_id=5e4b4bd273c28b0001905a1e&player_type=flash&uuid=5adafa8f-42df-4ac7-8a8f-5df4b1c1652b', function(){
+    console.log("Player fallback complete")
+  })
+}
+
+function zypeStylesExist() {
+  return document.querySelectorAll('.zype-styles').length > 0;
+}
+
+function doStyles(){
+
+  if (!zypeStylesExist()) {
+    var css = '';
+
+      var head = document.head || document.getElementsByTagName('head')[0],
+      style = document.createElement('style');
+      style.type = 'text/css';
+      style.setAttribute('class', 'zype-styles');
+      if (style.styleSheet){
+        style.styleSheet.cssText = css;
+      } else {
+        style.appendChild(document.createTextNode(css));
+      }
+      head.appendChild(style);
+  }
+}
+
+var videoDuration = 453;
+var setVideoDuration = function(player) {
+  videoDuration = videoDuration ? videoDuration : player.duration;
+};
+
+var setupAds = function(playerWidth, playerHeight) {
+  ad_sources = [];
+  var urls = [];
+  var timeOffsets = [];
+  var sourceTag = 'https://pubads.g.doubleclick.net/gampad/ads?sz=640x360&iu=/20519836/Zype&ciu_szs=235x90,272x104,336x104,344x132&url=&env=vp&impl=s&cust_params=uw%3Dtrue%26url%3D&correlator=971892722&gdfp_req=1&output=xml_vast3&unviewed_position_start=1';
+
+  var integration;
+
+      urls.push(adTagUrlDimensionsParser.parse(playerWidth, playerHeight, 'https://ab.zype.com/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhZF91cmwiOiJodHRwczovL3B1YmFkcy5nLmRvdWJsZWNsaWNrLm5ldC9nYW1wYWQvYWRzP3N6PTY0MHgzNjAmaXU9LzIwNTE5ODM2L1p5cGUmY2l1X3N6cz0yMzV4OTAsMjcyeDEwNCwzMzZ4MTA0LDM0NHgxMzImdXJsPSZlbnY9dnAmaW1wbD1zJmN1c3RfcGFyYW1zPXV3JTNEdHJ1ZSUyNnVybCUzRCZjb3JyZWxhdG9yPTI4NDk5NjAyNSZnZGZwX3JlcT0xJm91dHB1dD14bWxfdmFzdDMmdW52aWV3ZWRfcG9zaXRpb25fc3RhcnQ9MSIsInZpZGVvX2lkIjoiNWJmNDk3MTU4Nzk4OGIxNDY1MDA0NTU1Iiwic2l0ZV9pZCI6IjViMDgyMGZiZGM0MzkwMTMyZjAwMDFjYSIsInBheXdhbGwiOmZhbHNlLCJkYXRlIjoiMjAyMC0wMi0xOFQwMjoyODozNCswMDowMCIsImVudiI6InByb2R1Y3Rpb24iLCJwbGF5ZXJfdHlwZSI6Ilp5cGUgcG93ZXJlZCBieSBUSEVPcGxheWVyIiwiZGV2aWNlX3R5cGUiOiJEZXNrdG9wIn0.VfsVCNOL3kz2rUO_faOaOmWusERC4EKbYh96eRDDJlM?'));
+      timeOffsets.push(0);
+  for (var i = 0; i < urls.length; i++) {
+    ad_sources.push(
+        {
+          sources: urls[i],
+          timeOffset: timeOffsets[i]
+        }
+    )
+  }
+
+  return ad_sources
+}
+
+// player object is available on any site through window.zypeInitialize callback
+/*
+  Example usage:
+  window.zypeInitialize = function(zypePlayer) {
+    // do stuff with the player object
+    zypePlayer.duration
+    zypePlayer.pause()
+    etc...
+  }
+*/
+function exposePlayerObject() {
+  var baseTag = toString.call(window.zypeInitialize);
+  var accepted = ['[object Function]', '[object AsyncFunction]', '[object GeneratorFunction]', '[object Proxy]'];
+
+  if(accepted.indexOf(baseTag) >= 0) {
+    window.zypeInitialize.call(theoplayer, theoplayer);
+  }
+}
+
+function setAdTimeRemaining(element, currentAdTime) {
+  element.innerText = 'Advertisement: (' + calculateAdTimeRemaining(currentAdTime) + ')';
+}
+
+function calculateAdTimeRemaining(currentAdTime) {
+  var timeRemaining = Math.floor(theoplayer.duration - currentAdTime);
+
+  var minutes = Math.floor(timeRemaining / 60);
+  var seconds = timeRemaining - minutes * 60;
+
+  if (minutes < 10) {
+    minutes = '0' + minutes;
+  }
+
+  if (seconds < 10) {
+    seconds = '0' + seconds
+  }
+
+  return minutes + ':' + seconds;
+}
+
+function setupAdTimeRemaining() {
+  var adTimeRemainingElement = document.createElement('div');
+  adTimeRemainingElement.setAttribute('class', 'ad-time-remaining');
+  theoplayer.element.insertBefore(adTimeRemainingElement, theoplayer.element.firstChild)
+
+  return adTimeRemainingElement;
+}
+
+function setupLooping(player) {
+  if(false == true) {
+    player.addEventListener('ended', function(data) {
+      player.source = player.source;
+      player.play();
+    });
+  }
+}
+
+/*
+  readyState:
+  0: HAVE_NOTHING - Player has no information about the duration of its source
+  1: HAVE_METADATA - Player has information about the duration of its source
+  2: HAVE_CURRENT_DATA - the player has it's current frame in buffer
+  3: HAVE_FUTURE_DATA - the player has enough data for immediate playback
+  4: HAVE_ENOUGH_DATA - the player has enough data for continuous playback
+
+  canplay: 3
+  waiting: below 3
+  loadeddata: 1 to 2
+  playing - starts with media playback
+  progress - new media data added to buffer of player
+  readystatechange - readyState changes to new value
+*/
+var updatePlayerStateInterval;
+
+function setupEvents(player){
+  var ad_playing = false;
+  var adTimeRemainingElement = null;
+
+  // waiting
+  player.addEventListener('waiting', function(data){
+    em.dispatch('zype:initialized')
+
+    // et.dispatch(new ReadyStateLog(player, data));
+  });
+
+  // canplay
+  player.addEventListener('canplay', function(data){
+    em.dispatch('zype:ready')
+    // expose player object when player is fully initialized and ready for playback
+    exposePlayerObject();
+    setVideoDuration(player);
+    adTimeRemainingElement = setupAdTimeRemaining();
+
+    // et.dispatch(new ReadyStateLog(player, data));
+  });
+
+  player.addEventListener('pause', function(data){
+    em.dispatch('zype:pause')
+  });
+
+  player.addEventListener('error', function(data){
+    em.dispatch('zype:error')
+  });
+
+  player.addEventListener('play', function(data){
+    if(!ad_playing) {
+      em.dispatch('zype:play')
+    }
+  });
+
+  player.addEventListener('ended', function(data){
+    if(ad_playing) {
+      ad_playing = false;
+    } else {
+      em.dispatch('zype:complete')
+    }
+  });
+
+  player.ads.addEventListener('adbegin', function(data){
+    ad_playing = true;
+  });
+
+  player.ads.addEventListener('adend', function(data) {
+    ad_playing = false
+
+    // destroy adTimeRemainingElement container
+    adTimeRemainingElement.parentNode.removeChild(adTimeRemainingElement)
+  })
+
+  player.addEventListener('timeupdate', function(data) {
+
+    if (ad_playing === true) {
+      if(data.currentTime !== 0) {
+      }
+    }
+
+  });
+
+  player.addEventListener('destroy', function(data) {
+    clearInterval(updatePlayerStateInterval)
+  })
+
+  var zPlayer = document.querySelector("#zype_player");
+
+  if (zPlayer) {
+    zPlayer.addEventListener('mousemove', function(data){
+      em.dispatch('zype:mousemove');
+    });
+  }
+}
+
+function setupGoogleAnalytics(player) {
+  var gaObject = 'ga';
+  var title = 'CIO 156 JF19 Coffee Grinders';
+  var category = 'Video - Zype TheoPlayer';
+
+  if(gaObject) {
+    var tracker = {
+      entries: [],
+      send: function(entry) {
+        this.entries.push(entry);
+      }
+    };
+
+    if (!window.GoogleAnalyticsObject || !window[window.GoogleAnalyticsObject]) {
+      return;
+    }
+
+    ga(function() {
+      var t = ga.getAll()[0];
+
+      for(var i = 0; i < tracker.entries.length; i += 1) {
+        t.send(tracker.entries[i]);
+      }
+
+      tracker = t;
+    });
+
+    function doEvent(action) {
+      tracker.send({
+        hitType: 'event',
+        eventCategory: 'video',
+        eventAction: action,
+        eventLabel: title,
+      });
+    }
+
+    player.addEventListener('canplay', function(data) { doEvent('impression'); });
+    player.addEventListener('play', function(data) { doEvent('play'); });
+    player.addEventListener('ended', function(data) { doEvent('playback_finished'); });
+    player.addEventListener('waiting', function(data) { doEvent('buffer_start'); });
+    player.addEventListener('playing', function(data) { doEvent('buffer_end'); });
+    player.addEventListener('pause', function(data) { doEvent('pause'); });
+    player.addEventListener('error', function(data) { doEvent('error'); });
+    player.addEventListener('seeked', function(data) { doEvent('seek'); });
+
+    detectQualityChange(player, function(quality) {
+      doEvent('quality_switched_to_' + quality.bandwidth);
+    });
+  }
+
+}
+
+function setupContextMenu(player) {
+  var contextMenuLogo = player.element.parentNode.querySelector('.theo-context-menu-logo');
+  var contextMenuLink = player.element.parentNode.querySelector('.theo-context-menu-a');
+  var contextMenuVersion = player.element.parentNode.querySelector('.theo-context-version');
+  contextMenuLogo.style.background = '';
+  contextMenuLogo.style.display = 'none';
+  contextMenuLink.href = '';
+  contextMenuLink.onclick = function(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+    return false;
+  }
+  contextMenuVersion.innerText = "America\&#39;s Test Kitchen";
+}
+
+function setupMediaAnalytics(player){
+  AKAMAI_MEDIA_ANALYTICS_CONFIG_FILE_PATH = "https://ma1169-r.analytics.edgekey.net/config/beacon-10061.xml?enableGenericAPI=1"
+
+  var akaPlugin = false;
+  var currentPlayerState;
+
+  function getAkaPlugin(player) {
+    if(akaPlugin == false) {
+      akaPlugin = new AkaHTML5MediaAnalytics({
+        streamHeadPosition: function(){ player.currentTime },
+        streamLength: function(){ player.duration }
+      });
+      akaPlugin.setData("siteId", "5b0820fbdc4390132f0001ca");
+      akaPlugin.setData("videoId", "5bf4971587988b1465004555");
+      akaPlugin.setData("title", "CIO 156 JF19 Coffee Grinders");
+      akaPlugin.setData("playerId", "theoplayer");
+    }
+    return akaPlugin;
+  };
+
+  function handlePlaybackPlaying() {
+    if (currentPlayerState == 'PLAYING') return;
+
+    if(!ad_playing) {
+      getAkaPlugin().handlePlaying();
+      currentPlayerState = 'PLAYING'
+    }
+  }
+
+  function handlePlaybackPaused() {
+    if (currentPlayerState == 'PAUSED') return;
+    getAkaPlugin().handlePause();
+    currentPlayerState = 'PAUSED';
+  }
+
+  function handleBufferStart() {
+    getAkaPlugin().handleBufferStart();
+    currentPlayerState = null;
+  }
+
+  function handleBufferEnd() {
+    getAkaPlugin().handleBufferEnd();
+    currentPlayerState = null;
+  }
+
+  function updatePlayerState() {
+    if (player.ended) {
+      return;
+    } else if (currentPlayerState == 'PLAYING' && player.paused) {
+      handlePlaybackPaused();
+    } else if (currentPlayerState == 'PAUSED' && !player.paused) {
+      handlePlaybackPlaying();
+    }
+  }
+
+  var ad_playing = false;
+
+  player.addEventListener('canplay', function(data){ getAkaPlugin().handleSessionInit() });
+  player.addEventListener('play', handlePlaybackPlaying);
+  player.addEventListener('ended', function(data){
+    if(ad_playing) {
+      ad_playing = false;
+    } else {
+      getAkaPlugin().handlePlayEnd();
+    }
+  });
+
+  player.addEventListener('pause', handlePlaybackPaused);
+  player.addEventListener('error', function(data){ getAkaPlugin().handleError() });
+  player.addEventListener('waiting', handleBufferStart);
+  player.addEventListener('playing', handleBufferEnd);
+
+  player.ads.addEventListener('adbegin', function(data){
+    ad_playing = true;
+  });
+
+  detectQualityChange(player, function(quality){
+    getAkaPlugin().handleBitRateSwitch(quality.bandwidth);
+  });
+
+  updatePlayerStateInterval = setInterval(updatePlayerState, 1000);
+}
+
+function detectQualityChange(player, callback){
+  player.addEventListener('play', function(data){
+    if(player.videoTracks) {
+      // detect video tracks being added to the player
+      player.videoTracks.addEventListener('addtrack', function(e0) {
+        // detect quality changes of a track
+        e0.track.addEventListener('activequalitychanged', function(e1) {
+          callback(e1.quality);
+        });
+      });
+    }
+
+  });
+}
+
+var publicProtocol = 'https';
+var publicBaseUrl = 'admin.zype.com';
+var publicDir = "";
+
+if(publicBaseUrl.indexOf('dev') !== -1) {
+  publicDir = publicProtocol + '://' + publicBaseUrl + ':3000/theoplayer/v2/';
+} else {
+  publicDir = publicProtocol + '://' + publicBaseUrl + '/theoplayer/v2/';
+}
+
+scriptLoader([
+  'https://resources.zype.com/player/2.66.2/zypeplayer.js',
+  'https://imasdk.googleapis.com/js/sdkloader/ima3.js',
+  'https://resources.zype.com/akamai/akamaihtml5-min.js',
+], doPlayer);
+loadStylesheet('https://resources.zype.com/player/2.66.2/ui.css');
+loadStylesheet(publicDir + 'theoplayer.custom.css');
+
+})();
+
+notes:
+======
+ * sources: [
+     {
+       src : UrlDimensionsParser.parse(container.offsetWidth, container.offsetHeight, 'https://player.zype.com/manifest/5bf4971587988b1465004555.m3u8?ad_enabled=true&api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&https=true&player_request_id=5e4b4bd273c28b0001905a1e&preview=false'),
+       type : 'application/x-mpegURL',
+       crossOrigin: '',
+     },
+   ]
+ * var et = new ErrorTracker({
+     site_title: 'America\&#39;s Test Kitchen',
+     video_id: '5bf4971587988b1465004555',
+     video_title: 'CIO 156 JF19 Coffee Grinders',
+   })
+
+// -----------------------------------------------------------------------------
+
+"video_segments" #2 URL:
+  https://player.zype.com/embed/5dc9d79bea906d5d4f67cb55.js?api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ
+
+"video_segments" #2 player:
+===========================
+
+(function(){
+/* IE compatibility */
+if(!window.console){
+  console = {log: function(){}};
+}
+if(!window.location.origin){
+  window.location.origin = window.location.protocol + "//" + window.location.hostname + (window.location.port ? ':' + window.location.port : '');
+}
+
+/* Write container */
+if(!document.getElementById('zype_5dc9d79bea906d5d4f67cb55')) {
+  if(document.getElementById('broadcast-preview')) {
+    document.getElementById('broadcast-preview').innerHTML = "<div id='zype_5dc9d79bea906d5d4f67cb55'></div>";
+  } else if (document.getElementById('zype_player')) { 
+    document.getElementById('zype_player').innerHTML = "<div id='zype_5dc9d79bea906d5d4f67cb55'></div>";
+  } else {
+    console.log('Could not find zype container');
+  }
+}
+
+/* Helpers */
+function loadScript(url, callback){
+  var head = document.getElementsByTagName('head')[0];
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src = url;
+  script.onload = callback;
+  script.onerror = function() {
+    // run the callback anyway
+    callback()
+  }
+  head.appendChild(script);
+}
+
+function scriptLoader(scripts, callback){
+  var i = 0, loaded = 0;
+  for (; i < scripts.length; i++) {
+    if (!isScriptLoaded(scripts[i])) {
+      loadScript(scripts[i], function(){
+        if (++loaded == scripts.length) {
+          callback();
+        }
+      })
+    } else {
+      if (++loaded == scripts.length) {
+        callback()
+      }
+    }
+
+  }
+}
+
+function isScriptLoaded(scriptSrc) {
+  return document.querySelectorAll('script[src="' + scriptSrc + '"]').length > 0
+}
+
+function loadStylesheet(resource){
+  if (!isStylesheetLoaded(resource)) {
+    var head = document.getElementsByTagName('head')[0];
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = resource;
+    head.appendChild(link);
+  }
+}
+
+function isStylesheetLoaded(resource) {
+  return document.querySelectorAll('link[href="' + resource + '"]').length > 0
+}
+
+/* Reset player container */
+var container = document.getElementById('zype_5dc9d79bea906d5d4f67cb55');
+if(typeof container.resetPlayer == 'function'){ container.resetPlayer(); };
+container.innerHTML = '';
+container.resetPlayer = function(){};
+
+function EventManager(target,data) {
+  var events = {}
+  var messagesSupported = (typeof window.postMessage != 'undefined');
+
+  this.dispatch = function(event_type){
+    // post message to parent window
+    if(messagesSupported){ this.dispatchMessage(event_type) }
+  }
+
+  this.dispatchMessage = function(event_type){
+    var message = JSON.parse(JSON.stringify(data));
+    message.event = event_type;
+    target.postMessage(JSON.stringify(message), '*');
+  }
+}
+
+var em = new EventManager(window, {"id":"5dc9d79bea906d5d4f67cb55","info":{}});
+
+function ErrorTracker(requestParams) {
+  var loaded = false;
+  this.dispatch = function(error){
+    if(!loaded){
+      loadScript('https://resources.zype.com/shared/ua-parser.min.js', function(){
+        loaded = true;
+        parseError(error);
+      })
+    } else {
+      parseError(error);
+    }
+  }
+  function parseError(error){
+    var uaResult = new UAParser().getResult();
+    var params = {
+      os: uaResult.os.name,
+      os_version: uaResult.os.version,
+      browser: uaResult.browser.name,
+      browser_version: uaResult.browser.version,
+      viewport: (window.outerWidth + "x" + window.outerHeight),
+      cookies_enabled: navigator.cookieEnabled,
+      error_code: error.errorCode,
+      error_message: error.errorMessage,
+      playback_status: error.playerStatus,
+      current_time: error.currentTime
+    }
+    for (var attr in requestParams){ 
+      params[attr] = requestParams[attr]; 
+    }
+    submitError(params)
+  }
+  function submitError(params){
+    var parts = [];
+    for (var i in params) {
+      if (params[i] != null) {
+        parts.push(encodeURIComponent(i) + "=" + encodeURIComponent(params[i]));
+      }
+    }
+    var data = parts.join('&');
+    var http = new XMLHttpRequest();
+    http.open("POST", 'https://playererror.zype.com/catch', true);
+    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    http.send(data);
+  }
+}
+function ageGater(container_id, successCallback){
+  var MESSAGE_CLASS = "agegate-message";
+  var TITLE_CLASS = "agegate-title";
+  var COOKIE_NAME = "zype-age-gate";
+  var OLD_ENOUGH = "success";
+  var TOO_YOUNG = "failure";
+
+  var container = document.getElementById(container_id);
+  var form_container = function(){ return container.getElementsByClassName('agegate-form')[0]; };
+  var submit_button =  function(){ return container.getElementsByClassName('agegate-submit')[0]; };
+  
+  var month_dropdown = function(){ return container.querySelectorAll('[name=month]')[0]; };
+  var day_dropdown =   function(){ return container.querySelectorAll('[name=day]')[0]; };
+  var year_dropdown =  function(){ return container.querySelectorAll('[name=year]')[0]; };
+  
+  var title_elem =     function(){ return container.getElementsByClassName(TITLE_CLASS)[0]; };
+  var message_elem =   function(){ return container.getElementsByClassName(MESSAGE_CLASS)[0]; };
+  
+  var month_html = '<select name="month"><option disabled selected>Month</option>'+genMonths()+'</select>';
+  var day_html = '<select name="day"><option disabled selected>Day</option>'+genDays()+'</select>';
+  var year_html = '<select name="year"><option disabled selected>Year</option>'+genYears()+'</select>';
+  var cookie_days = 30;
+  var minimum_age = 18;
+
+  var month, day, year;
+
+  //initialize
+  initializeHTML();
+  
+  //messages
+  var messages = {
+    form:{
+      title: 'The content in this video requires age verification.',
+      message: 'Please enter your date of birth below.'
+    },
+    young:{
+      title: 'Access Denied.',
+      message: 'You are not old enough to view this content.'
+    },
+    invalid:{
+      message: 'Please enter a valid date.'
+    }
+  }
+
+  //helpers
+  function setCookie(cname, cvalue, exdays) {
+    var d = new Date();
+    d.setTime(d.getTime() + (exdays*24*60*60*1000));
+    var expires = "expires="+d.toUTCString();
+    document.cookie = cname + "=" + cvalue + "; " + expires;
+  }
+
+  function getCookie(cname) {
+    var name = cname + "=";
+    var ca = document.cookie.split(';');
+    for(var i = 0; i < ca.length; i++) {
+      var c = ca[i];
+      while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return false;
+  }
+
+  function genMonths(){
+    var months_html = '';
+    var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    for(var i = 0; i < months.length; i++){
+      month_html += ('<option value="'+(i+1)+'">'+months[i]+'</option>');
+    }
+    return month_html;
+  }
+
+  function genDays(){
+    var days_html = '';
+    for(var i = 1; i < 32; i++){
+      days_html += ('<option value="'+i+'">'+i+'</option>');
+    }
+    return days_html;
+  }
+
+  function genYears(){
+    var years_html = '';
+    for(var i = (new Date().getFullYear()); i > 1899; i--){
+      year_html += ('<option value="'+i+'">'+i+'</option>');
+    }
+    return year_html;
+  }
+
+  function hasCookie(){
+    if(getCookie(COOKIE_NAME)){
+      return true;
+    }
+    return false;
+  }
+
+  function setOld(){
+    setCookie(COOKIE_NAME, OLD_ENOUGH, cookie_days);
+  }
+
+  function setYoung(){
+    setCookie(COOKIE_NAME, TOO_YOUNG, cookie_days);
+  }
+
+  function tooYoung(){
+    return getCookie(COOKIE_NAME) == TOO_YOUNG;
+  }
+
+  function show(){
+    container.style.display = "block";
+  }
+
+  function hide(){
+    container.style.display = "none";
+  }
+
+  function setTitle(set_to){
+    title_elem().innerHTML = set_to;
+  }
+
+  function setMessage(set_to, error){
+    var opener = "<p>";
+    if(error){
+      opener = "<p class=\"error\">";
+    }
+    message_elem().innerHTML = opener + set_to + '</p>';
+  }
+
+  function hideForm(){
+    form_container().style.display = 'none';
+  }
+
+  function showForm(){
+    form_container().style.display = 'block';
+  }
+
+  function calculateAge(bd){
+    var age_delta = Date.now() - bd.getTime();
+    var delta_date = new Date(age_delta);
+    return Math.abs(delta_date.getUTCFullYear() - 1970);
+  }
+
+  function checkDate(){
+    try {
+      if(!month || !day || !year){
+        return 'invalid';
+      }
+      
+      var birthday = new Date(year, month, day);
+      var age = calculateAge(birthday);
+      
+      return (age >= minimum_age) ? 'old_enough' : 'too_young';
+    } catch(err) {
+      return 'invalid';
+    }          
+  }
+
+  //renderers
+  function initializeHTML(){
+    container.innerHTML = '' +
+      '<div class="wrapper">' +
+        '<div class="inner">' +
+          '<h1 class="agegate-title"></h1>' +
+          '<p class="agegate-message"></p>' +
+          '<div class="agegate-form">' +
+            '<div class="agegate-submit">Verify</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '';
+  }
+
+  function presentForm(){
+    setTitle(messages.form.title);
+    setMessage(messages.form.message);
+    
+    form_container().innerHTML = month_html + day_html + year_html + form_container().innerHTML;
+    month_dropdown().addEventListener('change', monthHandler, false);
+    day_dropdown().addEventListener('change', dayHandler, false);
+    year_dropdown().addEventListener('change', yearHandler, false);
+    submit_button().addEventListener('click', submitHandler, false);
+    
+    showForm();
+    show();
+  }
+
+  function denyAccess(){
+    hideForm();
+    setTitle(messages.young.title);
+    setMessage(messages.young.message, true);
+    show();
+  }
+
+  function allowAccess(){
+    // for flash player swf layering
+    if(successCallback) {
+      successCallback();
+    }
+    hide();
+  }
+
+  //handlers
+  function submitHandler(){
+    switch (checkDate()){
+      case 'old_enough':
+        setOld();
+        allowAccess();
+        break;
+      case 'too_young':
+        setYoung();
+        denyAccess();
+        break;
+      case 'invalid':
+        setMessage(messages.invalid.message, true);
+        break;
+    }
+  }
+
+  function monthHandler(){
+    month = month_dropdown().value;
+  }
+
+  function dayHandler(){
+    day = day_dropdown().value;
+  }
+
+  function yearHandler(){
+    year = year_dropdown().value
+  }
+
+  return {
+    setCookieDays: function(days){
+      cookie_days = days;
+    },
+    setMinimumAge: function(age){
+      minimum_age = age;
+    },
+    setMessages: function(msgs){
+      messages = msgs;
+    },
+    doItUp: function(){
+      if(!hasCookie()){
+        return presentForm();
+      }
+
+      if(tooYoung()){
+        return denyAccess();
+      }
+
+      return allowAccess();
+    }
+  }
+}
+
+function AdTagUrlDimensionsParser() {
+  this.parse = function(width, height, url){
+    var playerDimensionsParams = ["player_width=", width, '&player_height=', height].join('');
+    
+    if (url.indexOf("?") !== -1) {
+      return url + '&' + playerDimensionsParams;
+    }
+
+    return url + '?' + playerDimensionsParams;
+  }
+}
+
+var adTagUrlDimensionsParser = new AdTagUrlDimensionsParser();
+function UrlDimensionsParser() {
+  this.parse = function(width, height, url){
+    return url.replace('[player_width]', width)
+              .replace('[player_height]', height)
+              .replace('[player_dimensions]', width + 'x' + height);
+  }
+}
+
+var UrlDimensionsParser = new UrlDimensionsParser();
+function continueWatching(nextVideo, embed_key, data_source) {
+  var videoTitle = nextVideo.video.title;
+  var videoId = nextVideo.video._id;
+  var url = nextVideo.url;
+  var monetized = nextVideo.monetized;
+  var embedKey = embed_key;
+  var currentVideoId = data_source;
+
+  var didProceedToNextVideo = false;
+
+  function continueWatchingHandler(playerDuration, currentTime, playbackEnded) {
+    // once player is loaded, playerDuration will be a number not 'NaN'
+    if (!Number.isNaN(playerDuration)) {
+
+      // there are about 10 seconds remaining in the video
+      var timeRemaining = Math.floor(playerDuration - currentTime)
+      if (timeRemaining <= 10) {
+        initContinueWatching(timeRemaining)
+      }
+
+      if (timeRemaining > 10) {
+        destroyContinueWatching()
+      }
+
+      // proceed to next video once playback has ended
+      // didProceedToNextVideo to track if it has proceeded because player fires ended multiple times on timeupdate
+      if (playbackEnded && !didProceedToNextVideo) {
+        didProceedToNextVideo = true
+        proceedToNextVideo()
+      }
+    }
+  }
+
+  function initContinueWatching(timeRemaining) {
+    var elementNames = {
+      bannerClassName: 'zype-continue-watching',
+      countdownClassName: 'continue-watching--countdown',
+      titleClassName: 'continue-watching--title',
+      buttonClassName: 'continue-watching--btn'
+    }
+
+    // create the banner elements if they don't exist
+    if (theoplayer.element.querySelector('.' + elementNames.bannerClassName) === null) {
+      createContinueWatchingElements(elementNames)
+    }
+
+    // update values as time changes
+    theoplayer.element.querySelector('.' + elementNames.countdownClassName).innerHTML = 'Up next in ' + timeRemaining + ':'
+  }
+
+  function createContinueWatchingElements(elementNames) {
+    var bannerElement = document.createElement('div')
+    bannerElement.setAttribute('class', elementNames.bannerClassName);
+
+    var countdownElement = document.createElement('div')
+    countdownElement.setAttribute('class', elementNames.countdownClassName)
+
+    var titleElement = document.createElement('div')
+    titleElement.setAttribute('class', elementNames.titleClassName)
+    titleElement.innerHTML = videoTitle;
+
+    var continueBtn = document.createElement('button')
+    continueBtn.setAttribute('class', elementNames.buttonClassName)
+    continueBtn.innerText = 'Play Now'
+    continueBtn.addEventListener('click', function(e) {
+      proceedToNextVideo();
+    })
+
+    bannerElement.appendChild(countdownElement)
+    bannerElement.appendChild(titleElement)
+    bannerElement.appendChild(continueBtn)
+
+    theoplayer.element.insertBefore(bannerElement, theoplayer.element.firstChild)
+  }
+
+  function destroyContinueWatching() {
+    if (theoplayer.element.querySelectorAll('.zype-continue-watching').length > 0) {
+      var banner = theoplayer.element.querySelector('.zype-continue-watching')
+      banner.parentNode.removeChild(banner)
+    }
+  }
+
+  function proceedToNextVideo() {
+
+    var nextVideoContainer = document.querySelector('#zype_' + videoId);
+
+    // create the script element
+    var embedScript = document.createElement('script')
+    embedScript.type = 'text/javascript'
+    var embedConfigScript; // for monetized only
+
+    if (!monetized) {
+      embedScript.src = url
+      
+      // on new video script load, remove the old script from the page
+      embedScript.onload = function() {
+        var embedScripts = document.querySelectorAll('script')
+        embedScripts.forEach(function(script) {
+          if (script.src.indexOf('embed/' + videoId) !== -1) {
+            script.parentNode.removeChild(script)
+          }
+        })
+      }
+
+    } else if (monetized) {
+      embedScript.src = url + "/javascripts/subscription_embed.js"
+
+      embedConfigScript = document.createElement('script')
+      embedConfigScript.type = 'text/javascript'
+      embedConfigScript.textContent = 'zype.siteId = "' + embedKey + '";'
+      embedConfigScript.textContent += 'zype.host = "' + url + '";'
+      embedConfigScript.textContent += 'zype.videoId = "' + videoId + '";'
+      embedConfigScript.textContent += 'zype.videoEmbed("zype_' + videoId + '");'
+
+      // when subscription_embed.js is loaded, insert config
+      embedScript.onload = function() {
+        embedScript.parentNode.insertBefore(embedConfigScript, embedScript.nextSibling);
+      }
+    }
+
+    // insert the script element to load the new video
+    nextVideoContainer.parentNode.insertBefore(embedScript, nextVideoContainer.nextSibling)
+    // remove the old video from the page
+    container.parentNode.removeChild(container)
+  }
+
+  function insertNextVideoContainer() {
+    var nextVideoContainer = document.createElement('div')
+    nextVideoContainer.setAttribute('id', 'zype_' + videoId)
+    nextVideoContainer.setAttribute('class', 'zype-next-video')
+    container.parentNode.insertBefore(nextVideoContainer, container.nextSibling)
+  }
+
+  return {
+    continueWatchingHandler: continueWatchingHandler,
+    insertNextVideoContainer: insertNextVideoContainer
+  }
+}
+
+var player = null;
+var continue_watching = null;
+
+// hotkeys
+function THEOplayer_UI_Hotkeys (player) {
+  window.per = player
+  var togglePlay = function() {
+    if (player.paused) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  };
+
+  var toggleMute = function() {
+    player.muted = !player.muted
+  };
+
+  var toggleFullScreen = function() {
+    if (player.presentationMode = 'fullscreen') {
+      player.presentationMode = 'inline';
+    } else {
+      player.presentationMode = 'fullscreen';
+    }
+  };
+
+  var rewind = function() {
+    player.currentTime -= 5;
+  };
+
+  var forward = function() {
+    player.currentTime += 5;
+  };
+
+  var increaseVolume = function() {
+    player.volume = Math.min(player.volume + 0.05, 1);
+  };
+
+  var decreaseVolume = function() {
+    player.volume = Math.max(player.volume - 0.05, 0);
+  };
+
+  var preventStandardHotKeyActions = function(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    return false;
+  };
+
+  var charCodeMap = {
+    32: togglePlay, // spacebar
+    37: rewind, // left
+    38: increaseVolume, // up
+    39: forward, // right
+    40: decreaseVolume, // down
+    70: toggleFullScreen, // f
+    77: toggleMute // m
+  };
+
+  var isTheoPlayerFocused = function() {
+    var node = document.activeElement;
+
+
+    while(node !== null) {
+      if(player.element === node) {
+        return true;
+      }
+      node = node.parentNode;
+    }
+    return false;
+  };
+
+  var processKeyEvent = function(event) {
+    var action;
+    if(!event) {
+      event = window.event;
+    }
+    action = charCodeMap[event.keyCode];
+    if(action && !event.altKey && !event.ctrlKey && !event.shiftKey && isTheoPlayerFocused()) {
+      action();
+      return preventStandardHotKeyActions(event);
+    }
+  };
+
+  var load = function() {
+    player.element.tabIndex = 1;
+    document.addEventListener('keydown', processKeyEvent);
+  };
+
+  load();
+}
+
+function setupAgeGate(){
+  var agegate_container = document.createElement("div");
+  agegate_container.setAttribute("class", "zype-player-agegate-overlay");
+  agegate_container.setAttribute("id", "zype-player-agegate-overlay_5dc9d79bea906d5d4f67cb55");
+  container.appendChild(agegate_container);
+
+  var zype_age_gate = new ageGater('zype-player-agegate-overlay_5dc9d79bea906d5d4f67cb55');
+  zype_age_gate.setMinimumAge(18);
+  zype_age_gate.setCookieDays(60);
+  zype_age_gate.doItUp();
+}
+
+function setupContinueWatching() {
+  var next_video = false;
+  var embedKey = "Tohbkv2AdM7p8dlACwlJDubxzbvIsDB75RlvMAl654F5ZF1Bdw0eEj9Jvn5C-45i";
+  var dataSource = "5dc9d79bea906d5d4f67cb55"
+  if (next_video != false) {
+    continue_watching = new continueWatching(next_video, embedKey, dataSource);
+  }
+}
+
+function doPlayer(){
+  doStyles();
+
+  // ad container isn't rendered yet, so calculate player height for ad request
+  var aspectRatio = 16/9;
+  var playerWidth = container.offsetWidth;
+  var playerHeight = Math.floor(playerWidth / aspectRatio);
+
+  var videoSources = {
+    sources: [
+        {
+          src : UrlDimensionsParser.parse(container.offsetWidth, container.offsetHeight, 'https://player.zype.com/manifest/5dc9d79bea906d5d4f67cb55.m3u8?ad_enabled=true&api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&https=true&player_request_id=5e4b4d0adc3af0000171ca5b&preview=false'),
+          type : 'application/x-mpegURL',
+          crossOrigin: '',
+        },
+    ],
+      textTracks: [
+          {
+            src: 'https://gvupload.zype.com/video/5dc9d79bea906d5d4f67cb55/subtitles/5e4579d2509ee8000161af2e.vtt?1581611474',
+            srclang: 'en',
+            kind: 'captions',
+            label: 'English'
+          },
+      ],
+        ads: setupAds(playerWidth, playerHeight),
+        blockContentIfAdError: false,
+  };
+
+  var socialUrl = (window.location != window.parent.location) ? document.referrer : document.location.href;
+  var socialItems = [
+  ];
+
+  var playerConfiguration = {
+    allowNativeFullscreen: true,
+    fluid: true,
+    libraryLocation : 'https://resources.zype.com/player/2.66.2/',
+    ui: {
+      width: '100%',
+      height: '100%'
+    },
+    isEmbeddable: true,
+    ads: {
+      showCountdown: true,
+      vpaidMode: 'insecure'
+    },
+    mutedAutoplay: 'all',
+  };
+
+  window.theoconfig = playerConfiguration
+
+  var theoplayer = new THEOplayer.Player(container, playerConfiguration);
+  window.theoplayer = theoplayer || {};
+  theoplayer.abr.strategy = 'quality'
+  theoplayer.source = videoSources;
+    theoplayer.poster = 'https://gvimage.zype.com/5b0820fbdc4390132f0001ca/5dc9d79bea906d5d4f67cb55/custom_thumbnail/1080.jpg?1581611401';
+  theoplayer.preload = 'auto';
+  theoplayer.autoplay = false;
+  theoplayer.social.url = socialUrl;
+  theoplayer.social.items = socialItems;
+  theoplayer.controls = true;
+
+
+
+  theoplayer.addEventListener('error', function(event) {
+    et.dispatch(new TheoError(theoplayer, event))
+  })
+
+  THEOplayer_UI_Hotkeys(theoplayer);
+
+  setupLooping(theoplayer);
+  setupEvents(theoplayer);
+
+    setupMediaAnalytics(theoplayer);
+
+  setupGoogleAnalytics(theoplayer);
+  setupContextMenu(theoplayer);
+
+    theoplayer.addEventListener('unsupportedPlatform', function(event){
+      et.dispatch(new TheoError(theoplayer, event))
+      fallbackPlayer();
+    });
+
+
+  if(container.className.indexOf('zype-theo-player') < 0){
+    container.className = container.className + ' zype-theo-player';
+  }
+
+  container.className = container.className + ' theoplayer-container video-js theoplayer-skin theo-seekbar-above-controls';
+  document.querySelectorAll('.theo-social-label').forEach( function(label){
+    label.style.display = 'inline-block';
+  });
+
+  if(self !== top) {
+    container.style.position = 'absolute';
+    container.style.width = '100%';
+    container.style.height = '100%';
+  }
+
+  window.zypePlayerVersion = 2;
+
+} // end doPlayer()
+
+var et = new ErrorTracker({
+  player: 'theo',
+  version: '2.66.2',
+  site_id: '5b0820fbdc4390132f0001ca',
+  site_title: 'America\&#39;s Test Kitchen',
+  video_id: '5dc9d79bea906d5d4f67cb55',
+  video_title: 'Paris-Brest',
+  player_request_id: '5e4b4d0adc3af0000171ca5b',
+})
+
+function playerStatus(player) {
+  if(player.paused)  { return 'paused'; }
+  if(!player.paused) { return 'playing' }
+  if(player.seeking) { return 'seeking'; }
+  if(player.readyState < 3) { return 'waiting' }
+  return null;
+}
+
+function TheoError(player, error) {
+  this.errorCode = error.error.info.code;
+  this.errorMessage = error.error.code;
+  this.currentTime = isNaN(player.currentTime) ? 0 : player.currentTime;
+  this.playerStatus = playerStatus(player);
+}
+
+function ReadyStateLog(player, data) {
+  this.errorCode = 'ReadyState: ' + player.readyState;
+  this.errorMessage = data.type;
+  this.currentTime = isNaN(player.currentTime) ? 0 : player.currentTime
+  this.playerStatus = playerStatus(player);
+}
+
+function fallbackPlayer(){
+  loadScript('https://player.zype.com/embed/5dc9d79bea906d5d4f67cb55.js?api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&controls=true&fallback=true&origin_id=5e4b4d0adc3af0000171ca5b&player_type=flash&uuid=5adafa8f-42df-4ac7-8a8f-5df4b1c1652b', function(){
+    console.log("Player fallback complete")
+  })
+}
+
+function zypeStylesExist() {
+  return document.querySelectorAll('.zype-styles').length > 0;
+}
+
+function doStyles(){
+
+  if (!zypeStylesExist()) {
+    var css = '';
+
+      var head = document.head || document.getElementsByTagName('head')[0],
+      style = document.createElement('style');
+      style.type = 'text/css';
+      style.setAttribute('class', 'zype-styles');
+      if (style.styleSheet){
+        style.styleSheet.cssText = css;
+      } else {
+        style.appendChild(document.createTextNode(css));
+      }
+      head.appendChild(style);
+  }
+}
+
+var videoDuration = 1052;
+var setVideoDuration = function(player) {
+  videoDuration = videoDuration ? videoDuration : player.duration;
+};
+
+var setupAds = function(playerWidth, playerHeight) {
+  ad_sources = [];
+  var urls = [];
+  var timeOffsets = [];
+  var sourceTag = 'https://pubads.g.doubleclick.net/gampad/ads?sz=640x360&iu=/20519836/Zype&ciu_szs=235x90,272x104,336x104,344x132&url=&env=vp&impl=s&cust_params=uw%3Dtrue%26url%3D&correlator=282344251&gdfp_req=1&output=xml_vast3&unviewed_position_start=1';
+
+  var integration;
+
+      urls.push(adTagUrlDimensionsParser.parse(playerWidth, playerHeight, 'https://ab.zype.com/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhZF91cmwiOiJodHRwczovL3B1YmFkcy5nLmRvdWJsZWNsaWNrLm5ldC9nYW1wYWQvYWRzP3N6PTY0MHgzNjAmaXU9LzIwNTE5ODM2L1p5cGUmY2l1X3N6cz0yMzV4OTAsMjcyeDEwNCwzMzZ4MTA0LDM0NHgxMzImdXJsPSZlbnY9dnAmaW1wbD1zJmN1c3RfcGFyYW1zPXV3JTNEdHJ1ZSUyNnVybCUzRCZjb3JyZWxhdG9yPTkxNjc4NDA0MiZnZGZwX3JlcT0xJm91dHB1dD14bWxfdmFzdDMmdW52aWV3ZWRfcG9zaXRpb25fc3RhcnQ9MSIsInZpZGVvX2lkIjoiNWRjOWQ3OWJlYTkwNmQ1ZDRmNjdjYjU1Iiwic2l0ZV9pZCI6IjViMDgyMGZiZGM0MzkwMTMyZjAwMDFjYSIsInBheXdhbGwiOmZhbHNlLCJkYXRlIjoiMjAyMC0wMi0xOFQwMjozMzo0NyswMDowMCIsImVudiI6InByb2R1Y3Rpb24iLCJwbGF5ZXJfdHlwZSI6Ilp5cGUgcG93ZXJlZCBieSBUSEVPcGxheWVyIiwiZGV2aWNlX3R5cGUiOiJEZXNrdG9wIn0.n9_DCfEomayGnjUXIy42xTSj24GjCn61WS0wXtApyV4?'));
+      timeOffsets.push(0);
+  for (var i = 0; i < urls.length; i++) {
+    ad_sources.push(
+        {
+          sources: urls[i],
+          timeOffset: timeOffsets[i]
+        }
+    )
+  }
+
+  return ad_sources
+}
+
+// player object is available on any site through window.zypeInitialize callback
+/*
+  Example usage:
+  window.zypeInitialize = function(zypePlayer) {
+    // do stuff with the player object
+    zypePlayer.duration
+    zypePlayer.pause()
+    etc...
+  }
+*/
+function exposePlayerObject() {
+  var baseTag = toString.call(window.zypeInitialize);
+  var accepted = ['[object Function]', '[object AsyncFunction]', '[object GeneratorFunction]', '[object Proxy]'];
+
+  if(accepted.indexOf(baseTag) >= 0) {
+    window.zypeInitialize.call(theoplayer, theoplayer);
+  }
+}
+
+function setAdTimeRemaining(element, currentAdTime) {
+  element.innerText = 'Advertisement: (' + calculateAdTimeRemaining(currentAdTime) + ')';
+}
+
+function calculateAdTimeRemaining(currentAdTime) {
+  var timeRemaining = Math.floor(theoplayer.duration - currentAdTime);
+
+  var minutes = Math.floor(timeRemaining / 60);
+  var seconds = timeRemaining - minutes * 60;
+
+  if (minutes < 10) {
+    minutes = '0' + minutes;
+  }
+
+  if (seconds < 10) {
+    seconds = '0' + seconds
+  }
+
+  return minutes + ':' + seconds;
+}
+
+function setupAdTimeRemaining() {
+  var adTimeRemainingElement = document.createElement('div');
+  adTimeRemainingElement.setAttribute('class', 'ad-time-remaining');
+  theoplayer.element.insertBefore(adTimeRemainingElement, theoplayer.element.firstChild)
+
+  return adTimeRemainingElement;
+}
+
+function setupLooping(player) {
+  if(false == true) {
+    player.addEventListener('ended', function(data) {
+      player.source = player.source;
+      player.play();
+    });
+  }
+}
+
+/*
+  readyState:
+  0: HAVE_NOTHING - Player has no information about the duration of its source
+  1: HAVE_METADATA - Player has information about the duration of its source
+  2: HAVE_CURRENT_DATA - the player has it's current frame in buffer
+  3: HAVE_FUTURE_DATA - the player has enough data for immediate playback
+  4: HAVE_ENOUGH_DATA - the player has enough data for continuous playback
+
+  canplay: 3
+  waiting: below 3
+  loadeddata: 1 to 2
+  playing - starts with media playback
+  progress - new media data added to buffer of player
+  readystatechange - readyState changes to new value
+*/
+var updatePlayerStateInterval;
+
+function setupEvents(player){
+  var ad_playing = false;
+  var adTimeRemainingElement = null;
+
+  // waiting
+  player.addEventListener('waiting', function(data){
+    em.dispatch('zype:initialized')
+
+    // et.dispatch(new ReadyStateLog(player, data));
+  });
+
+  // canplay
+  player.addEventListener('canplay', function(data){
+    em.dispatch('zype:ready')
+    // expose player object when player is fully initialized and ready for playback
+    exposePlayerObject();
+    setVideoDuration(player);
+    adTimeRemainingElement = setupAdTimeRemaining();
+
+    // et.dispatch(new ReadyStateLog(player, data));
+  });
+
+  player.addEventListener('pause', function(data){
+    em.dispatch('zype:pause')
+  });
+
+  player.addEventListener('error', function(data){
+    em.dispatch('zype:error')
+  });
+
+  player.addEventListener('play', function(data){
+    if(!ad_playing) {
+      em.dispatch('zype:play')
+    }
+  });
+
+  player.addEventListener('ended', function(data){
+    if(ad_playing) {
+      ad_playing = false;
+    } else {
+      em.dispatch('zype:complete')
+    }
+  });
+
+  player.ads.addEventListener('adbegin', function(data){
+    ad_playing = true;
+  });
+
+  player.ads.addEventListener('adend', function(data) {
+    ad_playing = false
+
+    // destroy adTimeRemainingElement container
+    adTimeRemainingElement.parentNode.removeChild(adTimeRemainingElement)
+  })
+
+  player.addEventListener('timeupdate', function(data) {
+
+    if (ad_playing === true) {
+      if(data.currentTime !== 0) {
+      }
+    }
+
+  });
+
+  player.addEventListener('destroy', function(data) {
+    clearInterval(updatePlayerStateInterval)
+  })
+
+  var zPlayer = document.querySelector("#zype_player");
+
+  if (zPlayer) {
+    zPlayer.addEventListener('mousemove', function(data){
+      em.dispatch('zype:mousemove');
+    });
+  }
+}
+
+function setupGoogleAnalytics(player) {
+  var gaObject = 'ga';
+  var title = 'Paris-Brest';
+  var category = 'Video - Zype TheoPlayer';
+
+  if(gaObject) {
+    var tracker = {
+      entries: [],
+      send: function(entry) {
+        this.entries.push(entry);
+      }
+    };
+
+    if (!window.GoogleAnalyticsObject || !window[window.GoogleAnalyticsObject]) {
+      return;
+    }
+
+    ga(function() {
+      var t = ga.getAll()[0];
+
+      for(var i = 0; i < tracker.entries.length; i += 1) {
+        t.send(tracker.entries[i]);
+      }
+
+      tracker = t;
+    });
+
+    function doEvent(action) {
+      tracker.send({
+        hitType: 'event',
+        eventCategory: 'video',
+        eventAction: action,
+        eventLabel: title,
+      });
+    }
+
+    player.addEventListener('canplay', function(data) { doEvent('impression'); });
+    player.addEventListener('play', function(data) { doEvent('play'); });
+    player.addEventListener('ended', function(data) { doEvent('playback_finished'); });
+    player.addEventListener('waiting', function(data) { doEvent('buffer_start'); });
+    player.addEventListener('playing', function(data) { doEvent('buffer_end'); });
+    player.addEventListener('pause', function(data) { doEvent('pause'); });
+    player.addEventListener('error', function(data) { doEvent('error'); });
+    player.addEventListener('seeked', function(data) { doEvent('seek'); });
+
+    detectQualityChange(player, function(quality) {
+      doEvent('quality_switched_to_' + quality.bandwidth);
+    });
+  }
+
+}
+
+function setupContextMenu(player) {
+  var contextMenuLogo = player.element.parentNode.querySelector('.theo-context-menu-logo');
+  var contextMenuLink = player.element.parentNode.querySelector('.theo-context-menu-a');
+  var contextMenuVersion = player.element.parentNode.querySelector('.theo-context-version');
+  contextMenuLogo.style.background = '';
+  contextMenuLogo.style.display = 'none';
+  contextMenuLink.href = '';
+  contextMenuLink.onclick = function(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+    return false;
+  }
+  contextMenuVersion.innerText = "America\&#39;s Test Kitchen";
+}
+
+function setupMediaAnalytics(player){
+  AKAMAI_MEDIA_ANALYTICS_CONFIG_FILE_PATH = "https://ma1169-r.analytics.edgekey.net/config/beacon-10061.xml?enableGenericAPI=1"
+
+  var akaPlugin = false;
+  var currentPlayerState;
+
+  function getAkaPlugin(player) {
+    if(akaPlugin == false) {
+      akaPlugin = new AkaHTML5MediaAnalytics({
+        streamHeadPosition: function(){ player.currentTime },
+        streamLength: function(){ player.duration }
+      });
+      akaPlugin.setData("siteId", "5b0820fbdc4390132f0001ca");
+      akaPlugin.setData("videoId", "5dc9d79bea906d5d4f67cb55");
+      akaPlugin.setData("title", "Paris-Brest");
+      akaPlugin.setData("playerId", "theoplayer");
+    }
+    return akaPlugin;
+  };
+
+  function handlePlaybackPlaying() {
+    if (currentPlayerState == 'PLAYING') return;
+
+    if(!ad_playing) {
+      getAkaPlugin().handlePlaying();
+      currentPlayerState = 'PLAYING'
+    }
+  }
+
+  function handlePlaybackPaused() {
+    if (currentPlayerState == 'PAUSED') return;
+    getAkaPlugin().handlePause();
+    currentPlayerState = 'PAUSED';
+  }
+
+  function handleBufferStart() {
+    getAkaPlugin().handleBufferStart();
+    currentPlayerState = null;
+  }
+
+  function handleBufferEnd() {
+    getAkaPlugin().handleBufferEnd();
+    currentPlayerState = null;
+  }
+
+  function updatePlayerState() {
+    if (player.ended) {
+      return;
+    } else if (currentPlayerState == 'PLAYING' && player.paused) {
+      handlePlaybackPaused();
+    } else if (currentPlayerState == 'PAUSED' && !player.paused) {
+      handlePlaybackPlaying();
+    }
+  }
+
+  var ad_playing = false;
+
+  player.addEventListener('canplay', function(data){ getAkaPlugin().handleSessionInit() });
+  player.addEventListener('play', handlePlaybackPlaying);
+  player.addEventListener('ended', function(data){
+    if(ad_playing) {
+      ad_playing = false;
+    } else {
+      getAkaPlugin().handlePlayEnd();
+    }
+  });
+
+  player.addEventListener('pause', handlePlaybackPaused);
+  player.addEventListener('error', function(data){ getAkaPlugin().handleError() });
+  player.addEventListener('waiting', handleBufferStart);
+  player.addEventListener('playing', handleBufferEnd);
+
+  player.ads.addEventListener('adbegin', function(data){
+    ad_playing = true;
+  });
+
+  detectQualityChange(player, function(quality){
+    getAkaPlugin().handleBitRateSwitch(quality.bandwidth);
+  });
+
+  updatePlayerStateInterval = setInterval(updatePlayerState, 1000);
+}
+
+function detectQualityChange(player, callback){
+  player.addEventListener('play', function(data){
+    if(player.videoTracks) {
+      // detect video tracks being added to the player
+      player.videoTracks.addEventListener('addtrack', function(e0) {
+        // detect quality changes of a track
+        e0.track.addEventListener('activequalitychanged', function(e1) {
+          callback(e1.quality);
+        });
+      });
+    }
+
+  });
+}
+
+var publicProtocol = 'https';
+var publicBaseUrl = 'admin.zype.com';
+var publicDir = "";
+
+if(publicBaseUrl.indexOf('dev') !== -1) {
+  publicDir = publicProtocol + '://' + publicBaseUrl + ':3000/theoplayer/v2/';
+} else {
+  publicDir = publicProtocol + '://' + publicBaseUrl + '/theoplayer/v2/';
+}
+
+scriptLoader([
+  'https://resources.zype.com/player/2.66.2/zypeplayer.js',
+  'https://imasdk.googleapis.com/js/sdkloader/ima3.js',
+  'https://resources.zype.com/akamai/akamaihtml5-min.js',
+], doPlayer);
+loadStylesheet('https://resources.zype.com/player/2.66.2/ui.css');
+loadStylesheet(publicDir + 'theoplayer.custom.css');
+
+})();
+
+notes:
+======
+ * sources: [
+     {
+       src : UrlDimensionsParser.parse(container.offsetWidth, container.offsetHeight, 'https://player.zype.com/manifest/5dc9d79bea906d5d4f67cb55.m3u8?ad_enabled=true&api_key=jZ9GUhRmxcPvX7M3SlfejB6Hle9jyHTdk2jVxG7wOHPLODgncEKVdPYBhuz9iWXQ&https=true&player_request_id=5e4b4d0adc3af0000171ca5b&preview=false'),
+       type : 'application/x-mpegURL',
+       crossOrigin: '',
+     },
+   ],
+   textTracks: [
+     {
+       src: 'https://gvupload.zype.com/video/5dc9d79bea906d5d4f67cb55/subtitles/5e4579d2509ee8000161af2e.vtt?1581611474',
+       srclang: 'en',
+       kind: 'captions',
+       label: 'English'
+     },
+   ]
+ * var et = new ErrorTracker({
+     site_title: 'America\&#39;s Test Kitchen',
+     video_id: '5dc9d79bea906d5d4f67cb55',
+     video_title: 'Paris-Brest',
+   })
+
+notes:
+======
+ * the .m3u8 master manifest
+   - does not include any external audio or subtitle streams (to overlay w/ video)
+   - does include:
+     * video resolutions:
+       - 1920x1080
+       - 1280x720
+       -  854x480
+       -  426x240
+     * an audio-only stream
+ * the .vtt file
+   - does include subtitles for the entire "video_segments" #2
+
+// -----------------------------------------------------------------------------
